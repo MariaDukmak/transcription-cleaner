@@ -1,5 +1,5 @@
 {
-  "name": "@maryadukmak/transcription-cleaner",
+  "name": "transcription-cleaner",
   "version": "1.0.2",
   "description": "Multi-language voice-to-text transcription cleaner. Removes repeated words/phrases across 7 languages (EN, NL, DE, PT, CS, PL, ES)",
   "main": "index.js",
