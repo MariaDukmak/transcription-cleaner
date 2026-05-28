@@ -1,6 +1,6 @@
 {
-  "name": "transcription-cleaner",
-  "version": "1.0.1",
+  "name": "@maryadukmak/transcription-cleaner",
+  "version": "1.0.2",
   "description": "Multi-language voice-to-text transcription cleaner. Removes repeated words/phrases across 7 languages (EN, NL, DE, PT, CS, PL, ES)",
   "main": "index.js",
   "scripts": {
@@ -20,11 +20,11 @@
     "polish",
     "spanish"
   ],
-  "author": "Marya",
+  "author": "Marya Dukmak",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MariaDukmak/transcription-cleaner"
+    "url": "https://github.com/mariadukmak/transcription-cleaner"
   },
   "engines": {
     "node": ">=12.0.0"
