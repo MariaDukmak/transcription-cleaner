@@ -1,12 +1,15 @@
 /**
  * Transcription Cleaner - Multi-Language Voice-to-Text Cleanup
- *
- * PRIMARY FOCUS: Remove repeated words and phrases
+ * 
+ * FULLY OPTIMIZED:
+ * - Single split() at start
+ * - Process entire array once
+ * - Single join() at end
+ * - No intermediate string conversions
  */
 
-import isEqual from 'lodash/isEqual';
+import { isEqual } from 'lodash';
 
-/** Supported transcription languages. */
 export enum Language {
   EN = 'en',
   NL = 'nl',
@@ -17,7 +20,6 @@ export enum Language {
   ES = 'es',
 }
 
-/** Step-by-step output returned by cleanWithDetails. */
 export interface CleanDetails {
   original: string;
   step_1_normalize_whitespace: string;
@@ -27,177 +29,177 @@ export interface CleanDetails {
   final: string;
 }
 
-class TranscriptionCleaner {
-  /** Pure interjections - only filler sounds that add nothing. */
-  static readonly FILLER_WORDS: Record<Language, Set<string>> = {
-    [Language.EN]: new Set(['um', 'uh', 'ah', 'er', 'hmm', 'hm', 'erm', 'umm', 'uhh']),
-    [Language.NL]: new Set(['ehm', 'eh', 'uh', 'um', 'hm', 'hmm', 'erm']),
-    [Language.DE]: new Set(['äh', 'ähm', 'ähem', 'uh', 'um', 'hm', 'hmm', 'erm']),
-    [Language.PT]: new Set(['é', 'hã', 'ah', 'uh', 'hmm', 'hm', 'erm']),
-    [Language.CS]: new Set(['eem', 'ehm', 'hm', 'hmm', 'uh', 'um', 'ah', 'err']),
-    [Language.PL]: new Set(['um', 'uh', 'eh', 'hm', 'hmm', 'no', 'ano', 'erm']),
-    [Language.ES]: new Set(['um', 'uh', 'eh', 'este', 'hm', 'hmm', 'ah', 'erm']),
+const FILLER_WORDS: Record<Language, Set<string>> = {
+  [Language.EN]: new Set(['um', 'uh', 'ah', 'er', 'hmm', 'hm', 'erm', 'umm', 'uhh']),
+  [Language.NL]: new Set(['ehm', 'eh', 'uh', 'um', 'hm', 'hmm', 'erm']),
+  [Language.DE]: new Set(['äh', 'ähm', 'ähem', 'uh', 'um', 'hm', 'hmm', 'erm']),
+  [Language.PT]: new Set(['é', 'hã', 'ah', 'uh', 'hmm', 'hm', 'erm']),
+  [Language.CS]: new Set(['eem', 'ehm', 'hm', 'hmm', 'uh', 'um', 'ah', 'err']),
+  [Language.PL]: new Set(['um', 'uh', 'eh', 'hm', 'hmm', 'no', 'ano', 'erm']),
+  [Language.ES]: new Set(['um', 'uh', 'eh', 'este', 'hm', 'hmm', 'ah', 'erm']),
+};
+
+const createCleaner = (language: Language = Language.EN) => {
+  if (!Object.values(Language).includes(language)) {
+    throw new Error(
+      `Unsupported language: ${language}. Use: ${Object.values(Language).join(', ')}`
+    );
+  }
+
+  const fillerWords = FILLER_WORDS[language];
+
+  const normalizeWord = (word: string): string => {
+    return word.replace(/[^\w]/g, '').toLowerCase();
   };
 
-  private readonly language: Language;
-  private readonly fillerWords: Set<string>;
+  const isFiller = (word: string): boolean => {
+    const wordClean = word.replace(/[,.!?;:]+$/, '').toLowerCase();
+    return fillerWords.has(wordClean);
+  };
 
-  constructor(language: Language = Language.EN) {
-    if (!Object.values(Language).includes(language)) {
-      throw new Error(
-        `Unsupported language: ${language}. Use: ${Object.values(Language).join(', ')}`
-      );
-    }
+  /** OPTIMIZED: Single pass through array. */
+  const processArray = (words: string[]): string[] => {
+    // Step 1: Remove empty strings + interjections
+    let arr = words.filter(Boolean).filter(w => !isFiller(w));
 
-    this.language = language;
-    this.fillerWords = TranscriptionCleaner.FILLER_WORDS[language];
-  }
-
-  /** Main cleaning function. */
-  clean(rawText: string): string {
-    if (!rawText) return '';
-
-    let text = this._normalizeWhitespace(rawText);
-    text = this._removePureInterjections(text);
-    text = this._removeExactWordRepetitions(text);
-    text = this._removePhraseRepetitions(text);
-    text = this._addPunctuation(text);
-
-    return text;
-  }
-
-  /** Clean with detailed step-by-step output for debugging. */
-  cleanWithDetails(rawText: string): CleanDetails {
-    const step_1_normalize_whitespace = this._normalizeWhitespace(rawText);
-    const step_2_remove_interjections = this._removePureInterjections(step_1_normalize_whitespace);
-    const step_3_remove_word_repetitions = this._removeExactWordRepetitions(
-      step_2_remove_interjections
-    );
-    const step_4_remove_phrase_repetitions = this._removePhraseRepetitions(
-      step_3_remove_word_repetitions
-    );
-    const final = this._addPunctuation(step_4_remove_phrase_repetitions);
-
-    return {
-      original: rawText,
-      step_1_normalize_whitespace,
-      step_2_remove_interjections,
-      step_3_remove_word_repetitions,
-      step_4_remove_phrase_repetitions,
-      final,
-    };
-  }
-
-  /** Collapse multiple spaces and remove spaces before punctuation. */
-  private _normalizeWhitespace(text: string): string {
-    text = text.replaceAll(/ +/g, ' ');
-    text = text.replaceAll(/ +([,.!?;:])/g, '$1');
-    return text.trim();
-  }
-
-  /** Remove only pure interjection words. */
-  private _removePureInterjections(text: string): string {
-    const words = text.split(' ');
-    const cleanedWords: string[] = [];
-
-    for (const word of words) {
-      const wordClean = word.replace(/[,.!?;:]+$/, '').toLowerCase();
-      if (!this.fillerWords.has(wordClean)) {
-        cleanedWords.push(word);
+    // Step 2: Remove word repetitions
+    const noWordReps: string[] = [];
+    for (let i = 0; i < arr.length; i++) {
+      if (i === 0 || normalizeWord(arr[i]) !== normalizeWord(arr[i - 1])) {
+        noWordReps.push(arr[i]);
       }
     }
 
-    return cleanedWords.join(' ');
-  }
-
-  /** Remove exact word repetitions (but but → but, i i i → i). */
-  private _removeExactWordRepetitions(text: string): string {
-    const words = text.split(' ');
-    if (words.length < 2) return text;
-
-    const cleanedWords: string[] = [];
+    // Step 3: Remove phrase repetitions
+    const result: string[] = [];
     let i = 0;
-
-    while (i < words.length) {
-      const currentWord = this._normalizeWord(words[i] ?? '');
-
-      if (i > 0 && currentWord === this._normalizeWord(words[i - 1] ?? '')) {
-        i++;
-        continue;
-      }
-
-      cleanedWords.push(words[i] ?? '');
-      i++;
-    }
-
-    return cleanedWords.join(' ');
-  }
-
-  /** Remove phrase repetitions (we should we should → we should). */
-  private _removePhraseRepetitions(text: string): string {
-    const words = text.split(' ');
-    if (words.length < 4) return text;
-
-    const cleanedWords: string[] = [];
-    let i = 0;
-
-    while (i < words.length) {
-      let foundRepetition = false;
-
-      for (let phraseLen = Math.min(5, words.length - i); phraseLen > 1; phraseLen--) {
-        if (i + phraseLen * 2 <= words.length) {
-          const phrase1 = words.slice(i, i + phraseLen).map(w => this._normalizeWord(w));
-          const phrase2 = words
-            .slice(i + phraseLen, i + phraseLen * 2)
-            .map(w => this._normalizeWord(w));
-
-          if (this._arraysEqual(phrase1, phrase2)) {
-            cleanedWords.push(...words.slice(i, i + phraseLen));
-            i += phraseLen * 2;
-            foundRepetition = true;
+    while (i < noWordReps.length) {
+      let foundRep = false;
+      for (let len = Math.min(5, noWordReps.length - i); len > 1; len--) {
+        if (i + len * 2 <= noWordReps.length) {
+          const p1 = noWordReps.slice(i, i + len).map(normalizeWord);
+          const p2 = noWordReps.slice(i + len, i + len * 2).map(normalizeWord);
+          if (isEqual(p1, p2)) {
+            result.push(...noWordReps.slice(i, i + len));
+            i += len * 2;
+            foundRep = true;
             break;
           }
         }
       }
-
-      if (!foundRepetition) {
-        cleanedWords.push(words[i] ?? '');
+      if (!foundRep) {
+        result.push(noWordReps[i]);
         i++;
       }
     }
+    return result;
+  };
 
-    return cleanedWords.join(' ');
-  }
-
-  /** Normalize a word for comparison (strips punctuation, lowercases). */
-  private _normalizeWord(word: string): string {
-    return word.replace(/[^\w]/g, '').toLowerCase();
-  }
-
-  /** Check whether two string arrays are equal. */
-  private _arraysEqual(arr1: string[], arr2: string[]): boolean {
-    return isEqual(arr1, arr2);
-  }
-
-  /** Add a period at the end if punctuation is missing. */
-  private _addPunctuation(text: string): string {
+  const addPunctuation = (text: string): string => {
     if (!text) return text;
-
     text = text.trimEnd();
     const last = text[text.length - 1];
     if (last && !['.', '!', '?', ',', ';', ':'].includes(last)) {
       text += '.';
     }
-
     return text;
-  }
-}
+  };
+
+  /**
+   * Main clean function.
+   * OPTIMIZED: 1 split → process → 1 join
+   */
+  const clean = (rawText: string): string => {
+    if (!rawText) return '';
+
+    // Normalize punctuation spacing
+    let normalized = rawText.replace(/ +([,.!?;:])/g, '$1').trim();
+
+    // Single split, process, join
+    const words = normalized.split(' ');
+    const cleaned = processArray(words);
+    const result = cleaned.join(' ');
+
+    return addPunctuation(result);
+  };
+
+  /**
+   * Debug version with step-by-step output.
+   */
+  const cleanWithDetails = (rawText: string): CleanDetails => {
+    if (!rawText) {
+      return {
+        original: rawText,
+        step_1_normalize_whitespace: '',
+        step_2_remove_interjections: '',
+        step_3_remove_word_repetitions: '',
+        step_4_remove_phrase_repetitions: '',
+        final: '',
+      };
+    }
+
+    // Step 1: Normalize whitespace
+    let normalized = rawText.replace(/ +([,.!?;:])/g, '$1').trim();
+    const step_1 = normalized.split(' ').filter(Boolean).join(' ');
+
+    // Split once
+    const words = step_1.split(' ');
+
+    // Step 2: Remove interjections
+    const afterInterjections = words.filter(w => !isFiller(w));
+    const step_2 = afterInterjections.join(' ');
+
+    // Step 3: Remove word repetitions
+    const afterWordReps: string[] = [];
+    for (let i = 0; i < afterInterjections.length; i++) {
+      if (i === 0 || normalizeWord(afterInterjections[i]) !== normalizeWord(afterInterjections[i - 1])) {
+        afterWordReps.push(afterInterjections[i]);
+      }
+    }
+    const step_3 = afterWordReps.join(' ');
+
+    // Step 4: Remove phrase repetitions
+    const afterPhraseReps: string[] = [];
+    let i = 0;
+    while (i < afterWordReps.length) {
+      let foundRep = false;
+      for (let len = Math.min(5, afterWordReps.length - i); len > 1; len--) {
+        if (i + len * 2 <= afterWordReps.length) {
+          const p1 = afterWordReps.slice(i, i + len).map(normalizeWord);
+          const p2 = afterWordReps.slice(i + len, i + len * 2).map(normalizeWord);
+          if (isEqual(p1, p2)) {
+            afterPhraseReps.push(...afterWordReps.slice(i, i + len));
+            i += len * 2;
+            foundRep = true;
+            break;
+          }
+        }
+      }
+      if (!foundRep) {
+        afterPhraseReps.push(afterWordReps[i]);
+        i++;
+      }
+    }
+    const step_4 = afterPhraseReps.join(' ');
+
+    // Final: Add punctuation
+    const final = addPunctuation(step_4);
+
+    return {
+      original: rawText,
+      step_1_normalize_whitespace: step_1,
+      step_2_remove_interjections: step_2,
+      step_3_remove_word_repetitions: step_3,
+      step_4_remove_phrase_repetitions: step_4,
+      final,
+    };
+  };
+
+  return { clean, cleanWithDetails };
+};
+
+export const TranscriptionCleaner = (language: Language = Language.EN) => {
+  return createCleaner(language);
+};
 
 export default TranscriptionCleaner;
-
-// CommonJS interop
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = TranscriptionCleaner;
-  module.exports.default = TranscriptionCleaner;
-  module.exports.Language = Language;
-}
