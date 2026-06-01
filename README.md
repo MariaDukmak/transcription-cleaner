@@ -44,17 +44,20 @@ Use the `Language` enum (recommended in TypeScript) or the equivalent string cod
 | `Language.CS` | `cs` | Czech      |
 | `Language.PL` | `pl` | Polish     |
 | `Language.ES` | `es` | Spanish    |
-
-```ts
-const cleaner = new TranscriptionCleaner(Language.NL);
-cleaner.clean('we moeten we moeten gaan'); // "we moeten gaan."
-```
+| `Language.FR` | `fr` | French     |
 
 ## API
 
-### `new TranscriptionCleaner(language?: Language)`
+### `new TranscriptionCleaner(language?, options?)`
 
 Creates a cleaner for the given language. Defaults to `Language.EN`. Throws if the language is not supported.
+
+| Option | Default | Description |
+|---|---|---|
+| `fuzzy` | `true` | Collapse near-duplicate words/phrases via edit distance |
+| `maxWordDistance` | `1` | Max Levenshtein distance per word |
+| `minFuzzyLength` | `4` | Words shorter than this are never fuzzy-matched |
+| `maxPhraseTokenMismatches` | `1` | Max differing tokens allowed in a fuzzy phrase match |
 
 ### `clean(rawText: string): string`
 
@@ -62,15 +65,36 @@ Returns the cleaned transcription.
 
 ### `cleanWithDetails(rawText: string): CleanDetails`
 
-Returns the result of each pipeline step, useful for debugging:
+Returns the result of each pipeline step, useful for debugging. The `CleanDetails` object contains:
+
+- `original`
+- `step_1_normalize_whitespace`
+- `step_2_remove_interjections`
+- `step_3_remove_word_repetitions`
+- `step_4_remove_phrase_repetitions`
+- `fuzzyMerges` — every word/phrase that was collapsed, with `kept`, `dropped`, and `distance`
+- `final`
 
 ```ts
-const details = cleaner.cleanWithDetails('um we should we should go');
-console.log(details.step_2_remove_interjections); // "we should we should go"
-console.log(details.final);                       // "we should go."
+const cleaner = new TranscriptionCleaner(Language.EN, { fuzzy: true });
+const details = cleaner.cleanWithDetails('we should we shoud go');
+
+console.log(details.final);        // "we should go."
+console.log(details.fuzzyMerges);  // [{ kind: 'phrase', kept: 'we should', dropped: 'we shoud', distance: 1 }]
 ```
 
-The `CleanDetails` object contains: `original`, `step_1_normalize_whitespace`, `step_2_remove_interjections`, `step_3_remove_word_repetitions`, `step_4_remove_phrase_repetitions`, and `final`.
+## Fuzzy matching
+
+By default only exact repetitions are removed. Enable fuzzy mode to also catch near-duplicates from voice-to-text mishearings:
+
+```ts
+const fz = new TranscriptionCleaner(Language.EN, { fuzzy: true });
+
+fz.clean('should shoud go')        // → "should go."   (word, distance 1)
+fz.clean('we should we shoud go')  // → "we should go." (phrase, 1 fuzzy token)
+fz.clean('the the go')             // → "the go."       (exact, always works)
+fz.clean('de je boom')             // → "de je boom."   (< 4 chars, skipped)
+```
 
 ## Development
 

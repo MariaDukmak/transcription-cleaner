@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "ts-node src/test.ts",
+    "test": "jest",
     "start": "ts-node src/example.ts",
     "dev": "tsc --watch"
   },
@@ -33,5 +33,22 @@
   },
   "engines": {
     "node": ">=14.17.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/lodash": "^4.17.24",
+    "@types/node": "^25.9.1",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "ts-node": "^10.9.2"
+  },
+  "dependencies": {
+    "lodash": "^4.18.1"
+  },
+  "compilerOptions": {
+    "types": [
+      "node",
+      "jest"
+    ]
   }
 }

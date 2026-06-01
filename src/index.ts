@@ -117,6 +117,23 @@ export enum Language {
   CS = 'cs',
   PL = 'pl',
   ES = 'es',
+  FR = "fr"
+}
+
+/**
+ * One fuzzy merge event: the `kept` token/phrase was retained and the
+ * `dropped` near-duplicate was discarded. `distance` is the sum of
+ * per-token edit distances (0 for an exact match that went through the
+ * fuzzy path, ≥1 for a genuine fuzzy collapse).
+ *
+ * `kind` distinguishes single-word collapses (`"word"`) from multi-token
+ * phrase collapses (`"phrase"`).
+ */
+export interface FuzzyMerge {
+  kind: 'word' | 'phrase';
+  kept: string;
+  dropped: string;
+  distance: number;
 }
 
 export interface CleanDetails {
@@ -125,6 +142,15 @@ export interface CleanDetails {
   step_2_remove_interjections: string;
   step_3_remove_word_repetitions: string;
   step_4_remove_phrase_repetitions: string;
+  /**
+   * Every merge that was triggered by fuzzy (or exact) matching during
+   * steps 3 and 4. Empty when `fuzzy` is `false` and no exact repeats
+   * were found; populated whenever a word or phrase was collapsed.
+   *
+   * Only present on the object returned by `cleanWithDetails` — `clean`
+   * does not compute it.
+   */
+  fuzzyMerges: FuzzyMerge[];
   final: string;
 }
 
@@ -147,6 +173,7 @@ const FILLER_WORDS: Record<Language, Set<string>> = {
   [Language.CS]: new Set(['eem', 'ehm', 'hm', 'hmm', 'uh', 'um', 'ah', 'err']),
   [Language.PL]: new Set(['um', 'uh', 'eh', 'hm', 'hmm', 'no', 'ano', 'erm']),
   [Language.ES]: new Set(['um', 'uh', 'eh', 'este', 'hm', 'hmm', 'ah', 'erm']),
+  [Language.FR]: new Set(['euh', 'bah', 'ben', 'bon', 'voilà', 'quoi', 'hein', 'hm', 'hmm', 'ah', 'eh']),
 };
 
 // Hoisted once (avoids rebuilding arrays/regexes per call).
@@ -189,7 +216,7 @@ export class TranscriptionCleaner {
     // Pre-collapse the filler set once so elongated forms match in O(1).
     this.collapsedFillers = new Set([...this.fillerWords].map(collapseRepeats));
 
-    this.fuzzy = options.fuzzy ?? false;
+    this.fuzzy = options.fuzzy ?? true;
     this.maxWordDistance = options.maxWordDistance ?? 1;
     this.minFuzzyLength = options.minFuzzyLength ?? 4;
     this.maxPhraseTokenMismatches = options.maxPhraseTokenMismatches ?? 1;
@@ -216,6 +243,18 @@ export class TranscriptionCleaner {
     return withinDistance(x, y, this.maxWordDistance);
   }
 
+  /**
+   * Same semantics as `wordEq`, but also returns the exact edit distance.
+   * Returns `{ eq: false, distance: -1 }` when the words are considered different.
+   */
+  private wordEqDist(x: string, y: string): { eq: boolean; distance: number } {
+    if (x === y) return { eq: true, distance: 0 };
+    if (!this.fuzzy) return { eq: false, distance: -1 };
+    if (x.length < this.minFuzzyLength || y.length < this.minFuzzyLength) return { eq: false, distance: -1 };
+    const d = levenshtein(x, y, this.maxWordDistance);
+    return d <= this.maxWordDistance ? { eq: true, distance: d } : { eq: false, distance: -1 };
+  }
+
   /** Two normalized token slices count as the same phrase. */
   private phraseEq(p1: string[], p2: string[]): boolean {
     if (isEqual(p1, p2)) return true; // exact fast path keeps lodash.isEqual
@@ -233,22 +272,43 @@ export class TranscriptionCleaner {
   }
 
   /** Collapse adjacent repeated words. Returns kept words + their normals. */
-  private dedupeWords(words: string[], norm: string[]): { words: string[]; norm: string[] } {
+  private dedupeWords(
+    words: string[],
+    norm: string[],
+    merges?: FuzzyMerge[],
+  ): { words: string[]; norm: string[] } {
     const outWords: string[] = [];
     const outNorm: string[] = [];
     for (let i = 0; i < words.length; i++) {
       const cur = norm[i] as string;
       const prev = i > 0 ? (norm[i - 1] as string) : '';
-      if (i === 0 || !this.wordEq(cur, prev)) {
+      if (i === 0) {
         outWords.push(words[i] as string);
         outNorm.push(cur);
+      } else {
+        const { eq, distance } = this.wordEqDist(cur, prev);
+        if (!eq) {
+          outWords.push(words[i] as string);
+          outNorm.push(cur);
+        } else if (merges) {
+          merges.push({
+            kind: 'word',
+            kept: outWords[outWords.length - 1] as string,
+            dropped: words[i] as string,
+            distance,
+          });
+        }
       }
     }
     return { words: outWords, norm: outNorm };
   }
 
   /** Collapse adjacent repeated phrases (length 2..5), longest first. */
-  private dedupePhrases(words: string[], norm: string[]): string[] {
+  private dedupePhrases(
+    words: string[],
+    norm: string[],
+    merges?: FuzzyMerge[],
+  ): string[] {
     const result: string[] = [];
     let i = 0;
     while (i < words.length) {
@@ -258,7 +318,22 @@ export class TranscriptionCleaner {
           const p1 = norm.slice(i, i + len);
           const p2 = norm.slice(i + len, i + len * 2);
           if (this.phraseEq(p1, p2)) {
+            const keptTokens = words.slice(i, i + len);
+            const droppedTokens = words.slice(i + len, i + len * 2);
             for (let j = i; j < i + len; j++) result.push(words[j] as string);
+            if (merges) {
+              // Sum per-token distances for a meaningful "how fuzzy was this" number.
+              let totalDist = 0;
+              for (let t = 0; t < len; t++) {
+                totalDist += levenshtein(p1[t] as string, p2[t] as string);
+              }
+              merges.push({
+                kind: 'phrase',
+                kept: keptTokens.join(' '),
+                dropped: droppedTokens.join(' '),
+                distance: totalDist,
+              });
+            }
             i += len * 2;
             foundRep = true;
             break;
@@ -284,58 +359,64 @@ export class TranscriptionCleaner {
   }
 
   /**
-   * Main clean function. OPTIMIZED: 1 split -> process -> 1 join,
-   * with each token normalized exactly once.
+   * Shared pipeline. Runs the full clean once and returns every intermediate
+   * stage as a word array, so `clean` and `cleanWithDetails` can never drift.
+   * OPTIMIZED: 1 split -> process arrays once -> 1 join, each token normalized once.
+   *
+   * When `collectMerges` is true a `FuzzyMerge[]` is populated and returned;
+   * pass false (the default) for the hot path in `clean()` to avoid allocation.
    */
-  clean(rawText: string): string {
-    if (!rawText) return '';
-
+  private run(rawText: string, collectMerges?: false): {
+    step1: string[];
+    step2: string[];
+    step3: string[];
+    step4: string[];
+    final: string;
+    merges: undefined;
+  };
+  private run(rawText: string, collectMerges: true): {
+    step1: string[];
+    step2: string[];
+    step3: string[];
+    step4: string[];
+    final: string;
+    merges: FuzzyMerge[];
+  };
+  private run(rawText: string, collectMerges?: boolean): {
+    step1: string[];
+    step2: string[];
+    step3: string[];
+    step4: string[];
+    final: string;
+    merges: FuzzyMerge[] | undefined;
+  } {
+    const merges: FuzzyMerge[] | undefined = collectMerges ? [] : undefined;
     const normalized = rawText.replace(PUNCT_SPACING, '$1').trim();
-    const words = normalized.split(' ').filter((w) => w !== '' && !this.isFiller(w));
-    const norm = words.map((w) => this.normalizeWord(w));
-
-    const deduped = this.dedupeWords(words, norm);
-    const phraseClean = this.dedupePhrases(deduped.words, deduped.norm);
-
-    return this.addPunctuation(phraseClean.join(' '));
+    const step1 = normalized.split(' ').filter(Boolean); // whitespace normalized
+    const step2 = step1.filter((w) => !this.isFiller(w)); // interjections removed
+    const norm = step2.map((w) => this.normalizeWord(w));
+    const deduped = this.dedupeWords(step2, norm, merges); // word repetitions removed
+    const step4 = this.dedupePhrases(deduped.words, deduped.norm, merges); // phrases removed
+    const final = this.addPunctuation(step4.join(' '));
+    return { step1, step2, step3: deduped.words, step4, final, merges };
   }
 
-  /** Debug version with step-by-step output. */
+  /** Returns the cleaned transcription. */
+  clean(rawText: string): string {
+    return this.run(rawText).final;
+  }
+
+  /** Debug version with step-by-step output (same pipeline as `clean`). */
   cleanWithDetails(rawText: string): CleanDetails {
-    if (!rawText) {
-      return {
-        original: rawText,
-        step_1_normalize_whitespace: '',
-        step_2_remove_interjections: '',
-        step_3_remove_word_repetitions: '',
-        step_4_remove_phrase_repetitions: '',
-        final: '',
-      };
-    }
-
-    const normalized = rawText.replace(PUNCT_SPACING, '$1').trim();
-    const step1Words = normalized.split(' ').filter(Boolean);
-    const step_1 = step1Words.join(' ');
-
-    const afterInterjections = step1Words.filter((w) => !this.isFiller(w));
-    const step_2 = afterInterjections.join(' ');
-
-    const norm = afterInterjections.map((w) => this.normalizeWord(w));
-    const deduped = this.dedupeWords(afterInterjections, norm);
-    const step_3 = deduped.words.join(' ');
-
-    const phraseClean = this.dedupePhrases(deduped.words, deduped.norm);
-    const step_4 = phraseClean.join(' ');
-
-    const final = this.addPunctuation(step_4);
-
+    const r = this.run(rawText, true);
     return {
       original: rawText,
-      step_1_normalize_whitespace: step_1,
-      step_2_remove_interjections: step_2,
-      step_3_remove_word_repetitions: step_3,
-      step_4_remove_phrase_repetitions: step_4,
-      final,
+      step_1_normalize_whitespace: r.step1.join(' '),
+      step_2_remove_interjections: r.step2.join(' '),
+      step_3_remove_word_repetitions: r.step3.join(' '),
+      step_4_remove_phrase_repetitions: r.step4.join(' '),
+      fuzzyMerges: r.merges,
+      final: r.final,
     };
   }
 }

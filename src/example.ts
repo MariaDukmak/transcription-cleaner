@@ -33,11 +33,12 @@ for (const { label, language, raw } of samples) {
 }
 
 console.log('\n--- Debug Mode (See Each Step) ---');
-const cleanerDebug = new TranscriptionCleaner(Language.EN);
-const details: CleanDetails = cleanerDebug.cleanWithDetails('um we should we should go');
+const cleanerDebug = new TranscriptionCleaner(Language.EN, { fuzzy: true });
+const details: CleanDetails = cleanerDebug.cleanWithDetails('um we should hallo we shoud go');
 console.log('Original:                  ', details.original);
 console.log('After remove interjections:', details.step_2_remove_interjections);
 console.log('After remove word reps:    ', details.step_3_remove_word_repetitions);
+console.log('Merges' , details.fuzzyMerges)
 console.log('Final:                     ', details.final);
 
 console.log('\n' + '='.repeat(80));
