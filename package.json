@@ -1,7 +1,7 @@
 {
   "name": "transcription-cleaner",
-  "version": "2.0.0",
-  "description": "Multi-language voice-to-text transcription cleaner",
+  "version": "2.1.0",
+  "description": "Multi-language voice-to-text transcription cleaner. Removes repeated words/phrases across 7 languages (EN, NL, DE, PT, CS, PL, ES)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,16 +10,28 @@
     "start": "ts-node src/example.ts",
     "dev": "tsc --watch"
   },
-  "keywords": ["transcription", "voice-to-text", "multilingual", "typescript"],
-  "author": "Your Name",
+  "keywords": [
+    "transcription",
+    "voice-to-text",
+    "cleanup",
+    "multilingual",
+    "repetition",
+    "typescript",
+    "english",
+    "dutch",
+    "german",
+    "portuguese",
+    "czech",
+    "polish",
+    "spanish"
+  ],
+  "author": "Marya Dukmak",
   "license": "MIT",
-  "dependencies": {
-    "lodash": "^4.17.21"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mariadukmak/transcription-cleaner"
   },
-  "devDependencies": {
-    "@types/lodash": "^4.14.195",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "ts-node": "^10.9.0"
+  "engines": {
+    "node": ">=14.17.0"
   }
 }
