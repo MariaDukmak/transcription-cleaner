@@ -1,7 +1,7 @@
 {
   "name": "transcription-cleaner",
-  "version": "2.1.0",
-  "description": "Multi-language voice-to-text transcription cleaner. Removes repeated words/phrases across 7 languages (EN, NL, DE, PT, CS, PL, ES)",
+  "version": "1.0.3",
+  "description": "Multi-language voice-to-text transcription cleaner. Removes repeated words/phrases across 8 languages (EN, NL, DE, PT, CS, PL, ES, FR)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -23,7 +23,8 @@
     "portuguese",
     "czech",
     "polish",
-    "spanish"
+    "spanish", 
+    "frensh"
   ],
   "author": "Marya Dukmak",
   "license": "MIT",
@@ -35,20 +36,12 @@
     "node": ">=14.17.0"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
     "@types/lodash": "^4.17.24",
     "@types/node": "^25.9.1",
     "jest": "^30.4.2",
-    "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2"
   },
   "dependencies": {
     "lodash": "^4.18.1"
-  },
-  "compilerOptions": {
-    "types": [
-      "node",
-      "jest"
-    ]
   }
 }
